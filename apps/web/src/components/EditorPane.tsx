@@ -76,9 +76,10 @@ import {
 } from "@/components/ui/dialog";
 import { EditorToolbar } from "./EditorToolbar";
 import { EditorOutline } from "./EditorOutline";
+import { useAiBubbleMenu } from "./editor/useAiBubbleMenu";
 import { WeChatIcon } from "./WeChatIcon";
 import { ThemeToggle } from "./ThemeToggle";
-import { useTheme } from "./ThemeProvider";
+import { useEditorTheme } from "./ThemeProvider";
 import { sanitizeAndScopeCss } from "@/lib/css-sandbox";
 import { RevisionHistoryDialog } from "./dialogs/RevisionHistoryDialog";
 import { ExternalLinkDialog } from "./dialogs/ExternalLinkDialog";
@@ -140,6 +141,7 @@ import {
   getStoredEditorLinkOpenMode,
   resolveEditorLinkRequireModifier,
   shouldOpenEditorLink,
+  shouldShowEditorLinkOpenHint,
   type EditorLinkOpenMode,
 } from "@/lib/editor-link-click";
 import {
@@ -610,6 +612,7 @@ type EditorPaneProps = {
   onDocumentActionConsumed?: (requestId: number) => void;
   selectionActionBar?: ReactNode;
   onOpenMemo?: (memoId: string) => void;
+  onOpenAiPrompts?: () => void;
 };
 
 type RichEditorPaneProps = EditorPaneProps & {
@@ -673,10 +676,11 @@ const RichEditorPane = ({
   onDocumentActionConsumed,
   selectionActionBar,
   onOpenMemo,
+  onOpenAiPrompts,
   onRequestMobileNativeEdit,
 }: RichEditorPaneProps) => {
   const { t, i18n } = useTranslation();
-  const { customEditorTheme, editorTheme, resolvedTheme } = useTheme();
+  const { customEditorTheme, editorTheme } = useEditorTheme();
   const queryClient = useQueryClient();
   const isSelectionMode = Boolean(selectionActionBar);
   const [title, setTitle] = useState("");
@@ -701,6 +705,7 @@ const RichEditorPane = ({
   const [historyOpen, setHistoryOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [aiAssistantOpen, setAiAssistantOpen] = useState(false);
+  const aiBubbleMenu = useAiBubbleMenu(aiAssistantOpen);
   const [aiSelection, setAiSelection] = useState<AiSelectionContext | null>(null);
   const [systemInfoOpen, setSystemInfoOpen] = useState(false);
   const [updateAvailable, setUpdateAvailable] = useState(false);
@@ -1401,8 +1406,7 @@ const RichEditorPane = ({
   }, [cancelResourceMenuHide, isMobileViewport, showResourceMenu]);
 
   const showEditorLinkOpenHint = useCallback((target: EventTarget | null) => {
-    // Tip only when desktop + "require modifier" preference is on (default click-to-open needs no tip).
-    if (!editor?.isEditable || isMobileViewport || editorLinkOpenMode !== "modifier") {
+    if (!shouldShowEditorLinkOpenHint(Boolean(editor?.isEditable), isMobileViewport, editorLinkOpenMode)) {
       return;
     }
 
@@ -1457,12 +1461,6 @@ const RichEditorPane = ({
       setNoteLinkHintPosition(null);
     }
   }, []);
-
-  useEffect(() => {
-    if (editorLinkOpenMode !== "modifier") {
-      setNoteLinkHintPosition(null);
-    }
-  }, [editorLinkOpenMode]);
 
   useEffect(() => {
     if (!noteLinkHintPosition) {
@@ -3812,7 +3810,7 @@ const RichEditorPane = ({
                 onValueChange={(value) => handleNotebookChange(value)}
               >
                 <SelectTrigger className="h-8 min-w-0 border-transparent bg-transparent px-2 text-sm font-medium text-slate-600 hover:border-slate-200 hover:bg-slate-50 hover:text-slate-900 whitespace-nowrap">
-                  <SelectValue placeholder={t("editor.notebookPlaceholder")} />
+                  <SelectValue placeholder={t("editor.notebookPlaceholder")}>{currentNotebookLabel}</SelectValue>
                 </SelectTrigger>
                 <SelectContent className="max-h-60 bg-white border border-slate-200 rounded-md py-1 shadow-md">
                   {notebookOptions.map((notebook) => (
@@ -3995,7 +3993,6 @@ const RichEditorPane = ({
           "--editor-body-font-size": `${MEMO_CONTENT_STYLE.body.fontSize}px`,
           "--editor-body-line-height": String(MEMO_CONTENT_STYLE.body.lineHeight / MEMO_CONTENT_STYLE.body.fontSize),
           "--editor-paragraph-spacing": `${MEMO_CONTENT_STYLE.body.paragraphSpacing}px`,
-          "--memo-content-divider-color": MEMO_CONTENT_STYLE.divider.color[resolvedTheme],
           "--memo-content-divider-spacing": `${MEMO_CONTENT_STYLE.divider.marginVertical}px`,
           ...(editorTheme !== "default" &&
           editorTheme !== "minimal-emerald" &&
@@ -4003,13 +4000,20 @@ const RichEditorPane = ({
           editorTheme !== "wechat-green" &&
           editorTheme !== "modern-mint"
             ? {
-                "--editor-theme-bg": (resolvedTheme === "dark" ? customEditorTheme.dark : customEditorTheme.light).background,
-                "--editor-theme-text": (resolvedTheme === "dark" ? customEditorTheme.dark : customEditorTheme.light).text,
-                "--editor-theme-muted": (resolvedTheme === "dark" ? customEditorTheme.dark : customEditorTheme.light).muted,
-                "--editor-theme-heading": (resolvedTheme === "dark" ? customEditorTheme.dark : customEditorTheme.light).heading,
-                "--editor-theme-accent": (resolvedTheme === "dark" ? customEditorTheme.dark : customEditorTheme.light).accent,
-                "--editor-theme-soft": (resolvedTheme === "dark" ? customEditorTheme.dark : customEditorTheme.light).soft,
-                "--editor-theme-border": (resolvedTheme === "dark" ? customEditorTheme.dark : customEditorTheme.light).border,
+                "--editor-theme-light-bg": customEditorTheme.light.background,
+                "--editor-theme-light-text": customEditorTheme.light.text,
+                "--editor-theme-light-muted": customEditorTheme.light.muted,
+                "--editor-theme-light-heading": customEditorTheme.light.heading,
+                "--editor-theme-light-accent": customEditorTheme.light.accent,
+                "--editor-theme-light-soft": customEditorTheme.light.soft,
+                "--editor-theme-light-border": customEditorTheme.light.border,
+                "--editor-theme-dark-bg": customEditorTheme.dark.background,
+                "--editor-theme-dark-text": customEditorTheme.dark.text,
+                "--editor-theme-dark-muted": customEditorTheme.dark.muted,
+                "--editor-theme-dark-heading": customEditorTheme.dark.heading,
+                "--editor-theme-dark-accent": customEditorTheme.dark.accent,
+                "--editor-theme-dark-soft": customEditorTheme.dark.soft,
+                "--editor-theme-dark-border": customEditorTheme.dark.border,
               }
             : {}),
         } as CSSProperties}
@@ -4131,10 +4135,8 @@ const RichEditorPane = ({
               >
                 <BubbleMenu
                   editor={editor}
-                  shouldShow={({ editor: activeEditor }) =>
-                    activeEditor.isEditable && !activeEditor.state.selection.empty && !aiAssistantOpen
-                  }
-                  options={{ placement: "top" }}
+                  shouldShow={aiBubbleMenu.shouldShow}
+                  options={aiBubbleMenu.options}
                 >
                   <Button
                     type="button"
@@ -4404,6 +4406,7 @@ const RichEditorPane = ({
         selectionMarkdown={aiSelection?.contentMarkdown}
         onOpenChange={handleAiAssistantOpenChange}
         onApply={applyAiDraft}
+        onOpenPromptLibrary={onOpenAiPrompts}
       />
 
       <ShareMemoDialog memoId={memo.id} open={shareOpen} onOpenChange={setShareOpen} />
